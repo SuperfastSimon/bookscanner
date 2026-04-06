@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com; connect-src https://api.openai.com https://api.mistral.ai https://api.groq.com https://www.googleapis.com https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com; connect-src https://api.openai.com https://api.mistral.ai https://api.groq.com https://www.googleapis.com https://accounts.google.com https://openlibrary.org; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-ancestors 'none'">
 <title>Book Scanner Pro</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" integrity="sha384-OLBgp1GsljhM2TJ+sbHjaiH9txEUvgdDTAzHv2P24donTt6/529l+9Ua0vFImLlb" crossorigin="anonymous"></script>
 <style>
@@ -405,8 +405,8 @@ function parseDriveUrl() {
     html += '</span>';
   });
   container.innerHTML = html;
-  el('btn-load').disabled = !K('google');
-  el('drive-msg').textContent = K('google') ? ids.length + ' ID(s) herkend. Klik Fotos laden.' : 'Vul eerst een Google API key in (tab 1).';
+  el('btn-load').disabled = !gAccessToken;
+  el('drive-msg').textContent = gAccessToken ? ids.length + ' ID(s) herkend. Klik "Foto\'s laden".' : 'Log eerst in met Google (tab 1) voordat je foto\'s laadt.';
 }
 
 function toggleChip(chip) {
@@ -421,4 +421,330 @@ async function driveList(folderId, mimeFilter) {
   var headers = driveAuthHeader();
   do {
     var url = 'https://www.googleapis.com/drive/v3/files'
-      + '?q=' + encodeURIComponent("'" + fo
+      + '?q=' + encodeURIComponent("'" + folderId + "' in parents and trashed=false"
+          + (mimeFilter ? " and mimeType='" + mimeFilter + "'" : ''))
+      + '&fields=nextPageToken,files(id,name,mimeType)'
+      + '&pageSize=200'
+      + (pt ? '&pageToken=' + pt : '');
+    var resp = await fetch(url, {headers: headers});
+    if (!resp.ok) { var ed = await resp.json(); throw new Error((ed.error && ed.error.message) || resp.status); }
+    var data = await resp.json();
+    files = files.concat(data.files || []);
+    pt = data.nextPageToken || '';
+  } while (pt);
+  return files;
+}
+
+async function loadImagesFromFolders(folderIds) {
+  var all = [];
+  for (var i = 0; i < folderIds.length; i++) {
+    el('drive-msg').textContent = 'Map ' + (i+1) + '/' + folderIds.length + ' laden...';
+    var imgs = await driveList(folderIds[i], null);
+    imgs = imgs.filter(function(f){ return f.mimeType && f.mimeType.startsWith('image/'); });
+    all = all.concat(imgs);
+  }
+  all.forEach(function(f){ queue.push({name: f.name, type:'drive', id: f.id}); });
+  showQueue();
+  el('drive-msg').textContent = all.length + ' foto\'s toegevoegd aan wachtrij.';
+}
+
+async function loadDrive() {
+  if (!gAccessToken) { toast('Log eerst in met Google (tab 1)', 'error'); return; }
+  if (!selectedFolderIds.length) { toast('Selecteer eerst een folder ID', 'warn'); return; }
+  el('btn-load').disabled = true;
+  el('drive-msg').textContent = 'Submappen zoeken...';
+  try {
+    var subs = [];
+    for (var i = 0; i < selectedFolderIds.length; i++) {
+      var found = await driveList(selectedFolderIds[i], 'application/vnd.google-apps.folder');
+      subs = subs.concat(found);
+    }
+    if (subs.length) {
+      el('sub-card').style.display = '';
+      var html = '';
+      subs.forEach(function(s){
+        html += '<div class="chip sel" data-id="'+s.id+'" onclick="this.classList.toggle(\'sel\')">'+s.name+'</div>';
+      });
+      el('sub-list').innerHTML = html;
+      el('drive-msg').textContent = subs.length + ' submappen gevonden.';
+    } else {
+      await loadImagesFromFolders(selectedFolderIds);
+    }
+  } catch(e) {
+    toast('Drive fout: ' + e.message, 'error');
+    el('drive-msg').textContent = 'Fout: ' + e.message;
+  }
+  el('btn-load').disabled = false;
+}
+
+function selAll(state) {
+  el('sub-list').querySelectorAll('.chip').forEach(function(c){ c.classList.toggle('sel', state); });
+}
+
+async function loadSelected() {
+  var ids = [];
+  el('sub-list').querySelectorAll('.chip.sel').forEach(function(c){ ids.push(c.dataset.id); });
+  if (!ids.length) { toast('Geen submappen geselecteerd', 'warn'); return; }
+  el('sub-card').style.display = 'none';
+  el('drive-msg').textContent = 'Foto\'s laden...';
+  try {
+    await loadImagesFromFolders(ids);
+  } catch(e) {
+    toast('Fout: ' + e.message, 'error');
+    el('drive-msg').textContent = 'Fout: ' + e.message;
+  }
+}
+
+function addFiles(files) {
+  var added = 0;
+  Array.from(files).forEach(function(f){
+    if (f.type.startsWith('image/')) { queue.push({name: f.name, type:'local', file: f}); added++; }
+  });
+  el('file-msg').textContent = added + ' bestand(en) toegevoegd. Totaal in wachtrij: ' + queue.length;
+  showQueue();
+}
+
+function clearQueue() {
+  queue = [];
+  el('q-card').style.display = 'none';
+  toast('Wachtrij gewist', 'info');
+}
+
+function showQueue() {
+  el('q-card').style.display = '';
+  el('q-info').innerHTML = '<strong style="color:var(--blu)">' + queue.length + '</strong> foto\'s in wachtrij, klaar om te verwerken.';
+  el('st-tot').textContent = queue.length;
+}
+
+async function getImageBase64(item) {
+  if (item.type === 'local') {
+    return new Promise(function(resolve, reject) {
+      var r = new FileReader();
+      r.onload = function(e){ resolve(e.target.result.split(',')[1]); };
+      r.onerror = reject;
+      r.readAsDataURL(item.file);
+    });
+  }
+  var url = 'https://www.googleapis.com/drive/v3/files/' + item.id + '?alt=media';
+  var resp = await fetch(url, {headers: driveAuthHeader()});
+  if (!resp.ok) throw new Error('Drive download fout: ' + resp.status);
+  var blob = await resp.blob();
+  return new Promise(function(resolve, reject) {
+    var r = new FileReader();
+    r.onload = function(e){ resolve(e.target.result.split(',')[1]); };
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+var VISION_PROMPT = 'Analyseer deze boekcover. Geef ALLEEN JSON terug (geen uitleg), exact dit formaat:\n{"title":"","author":"","isbn":"","year":"","publisher":"","lang":"nl/en/de/fr/other","type":"roman/non-fictie/kinderboek/studieboek/other","condition":"goed/redelijk/slecht","confidence":0.9}\n- isbn: alleen als duidelijk zichtbaar op cover/rug, anders leeg string\n- year: alleen als zichtbaar, anders leeg string\n- confidence: 0.0-1.0';
+
+async function analyzeBookImage(base64) {
+  var openaiKey = K('openai');
+  var mistralKey = K('mistral');
+  if (!openaiKey && !mistralKey) throw new Error('Geen OpenAI of Mistral key ingevoerd');
+
+  if (openaiKey) {
+    var resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {'Authorization':'Bearer '+openaiKey, 'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model: 'gpt-4o-mini', max_tokens: 300,
+        messages: [{role:'user', content:[
+          {type:'text', text: VISION_PROMPT},
+          {type:'image_url', image_url:{url:'data:image/jpeg;base64,'+base64, detail:'low'}}
+        ]}]
+      })
+    });
+    if (!resp.ok) { var e1 = await resp.json(); throw new Error('OpenAI: ' + (e1.error && e1.error.message || resp.status)); }
+    var d1 = await resp.json();
+    totalCost += ((d1.usage.prompt_tokens||0) * 0.00000015 + (d1.usage.completion_tokens||0) * 0.0000006);
+    el('cost-lbl').textContent = 'Kosten: $' + totalCost.toFixed(4);
+    var m1 = d1.choices[0].message.content.trim().match(/\{[\s\S]*\}/);
+    if (!m1) throw new Error('Geen JSON in OpenAI antwoord');
+    return JSON.parse(m1[0]);
+  }
+
+  var resp2 = await fetch('https://api.mistral.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: {'Authorization':'Bearer '+mistralKey, 'Content-Type':'application/json'},
+    body: JSON.stringify({
+      model: 'pixtral-12b-2409', max_tokens: 300,
+      messages: [{role:'user', content:[
+        {type:'text', text: VISION_PROMPT},
+        {type:'image_url', image_url:'data:image/jpeg;base64,'+base64}
+      ]}]
+    })
+  });
+  if (!resp2.ok) { var e2 = await resp2.json(); throw new Error('Mistral: ' + (e2.message || resp2.status)); }
+  var d2 = await resp2.json();
+  var m2 = d2.choices[0].message.content.trim().match(/\{[\s\S]*\}/);
+  if (!m2) throw new Error('Geen JSON in Mistral antwoord');
+  return JSON.parse(m2[0]);
+}
+
+async function fetchPrices(book) {
+  var priceOpt = el('opt-prices').value;
+  if (priceOpt === 'none') return '';
+  if (priceOpt === 'isbn' && !book.isbn) return 'Geen ISBN';
+  var key = K('openai') || K('groq');
+  if (!key) return '';
+  var baseUrl = K('openai') ? 'https://api.openai.com/v1' : 'https://api.groq.com/openai/v1';
+  var model   = K('openai') ? 'gpt-4o-mini' : 'llama-3.1-8b-instant';
+  var q = [book.title, book.author, book.isbn ? 'ISBN '+book.isbn : '', book.year ? '('+book.year+')' : ''].filter(Boolean).join(' ');
+  var resp = await fetch(baseUrl + '/chat/completions', {
+    method: 'POST',
+    headers: {'Authorization':'Bearer '+key, 'Content-Type':'application/json'},
+    body: JSON.stringify({
+      model: model, max_tokens: 60,
+      messages: [{role:'user', content:'Schat de tweedehands verkoopprijs (Marktplaats/bol.com NL) voor dit boek: '+q+'. Geef ALLEEN een prijsrange zoals "€3-8". Geen uitleg.'}]
+    })
+  });
+  if (!resp.ok) return 'Prijsfout';
+  var d = await resp.json();
+  if (K('openai')) totalCost += ((d.usage.prompt_tokens||0)*0.00000015 + (d.usage.completion_tokens||0)*0.0000006);
+  return d.choices[0].message.content.trim();
+}
+
+async function processBook(item) {
+  el('curbook').textContent = 'Verwerkt: ' + item.name;
+  logAdd('Start: ' + item.name, 'li');
+  var result = {name:item.name, title:'', author:'', isbn:'', year:'', publisher:'', lang:'', type:'', condition:'', priceInfo:'', status:'ok', err:''};
+  try {
+    var b64 = await getImageBase64(item);
+    var book = await analyzeBookImage(b64);
+    Object.assign(result, {
+      title: book.title||'', author: book.author||'', isbn: book.isbn||'',
+      year: book.year||'', publisher: book.publisher||'', lang: book.lang||'',
+      type: book.type||'', condition: book.condition||''
+    });
+    result.priceInfo = await fetchPrices(result);
+    result.status = 'ok';
+    logAdd('OK: ' + (book.title || item.name), 'lg');
+  } catch(e) {
+    result.status = 'err';
+    result.err = e.message;
+    logAdd('Fout ' + item.name + ': ' + e.message, 'le');
+  }
+  results.push(result);
+  addResultRow(result);
+  updateStats();
+}
+
+function updateStats() {
+  var tot = queue.length;
+  var done = results.length;
+  var errs = results.filter(function(r){ return r.status==='err'; }).length;
+  var isbnC = results.filter(function(r){ return r.isbn; }).length;
+  var pct = tot ? Math.round(done/tot*100) : 0;
+  el('st-tot').textContent = tot;
+  el('st-done').textContent = done;
+  el('st-err').textContent = errs;
+  el('st-isbn').textContent = isbnC;
+  el('st-pct').textContent = pct + '%';
+  el('pfill').style.width = pct + '%';
+  el('prog-lbl').textContent = done + ' / ' + tot + ' verwerkt';
+  el('res-n').textContent = done;
+  if (t0 && done > 0) {
+    var elapsed = (Date.now() - t0) / 1000;
+    var remaining = (tot - done) * (elapsed / done);
+    el('prog-eta').textContent = 'Nog ~' + Math.floor(remaining/60) + 'm' + Math.floor(remaining%60) + 's';
+  }
+}
+
+function addResultRow(r) {
+  var tr = document.createElement('tr');
+  var sc = r.status==='ok' ? 'tok' : 'ter';
+  var sl = r.status==='ok' ? 'OK' : ('Fout: '+(r.err||'').slice(0,40));
+  tr.innerHTML = '<td>'+results.length+'</td>'
+    +'<td title="'+r.name+'">'+r.name+'</td>'
+    +'<td title="'+(r.title||'')+'">'+( r.title||'-')+'</td>'
+    +'<td>'+(r.author||'-')+'</td>'
+    +'<td>'+(r.isbn||'-')+'</td>'
+    +'<td>'+(r.year||'-')+'</td>'
+    +'<td>'+(r.publisher||'-')+'</td>'
+    +'<td>'+(r.lang||'-')+'</td>'
+    +'<td>'+(r.type||'-')+'</td>'
+    +'<td>'+(r.condition||'-')+'</td>'
+    +'<td>'+(r.priceInfo||'-')+'</td>'
+    +'<td><span class="tag '+sc+'">'+sl+'</span></td>';
+  el('res-body').appendChild(tr);
+}
+
+async function startProc() {
+  if (!queue.length) { toast('Wachtrij is leeg — laad eerst foto\'s (tab 2)', 'warn'); return; }
+  if (!K('openai') && !K('mistral')) { toast('Voer een OpenAI of Mistral key in (tab 1)', 'error'); return; }
+  running = true; paused = false;
+  el('btn-start').disabled = true;
+  el('btn-pause').disabled = false;
+  el('btn-stop').disabled = false;
+  results = []; el('res-body').innerHTML = '';
+  totalCost = 0; t0 = Date.now();
+  el('cost-lbl').textContent = 'Kosten: $0.0000';
+  updateStats();
+  var delay = parseInt(el('opt-delay').value) || 1500;
+  var autosave = parseInt(el('opt-autosave').value) || 25;
+  for (var i = 0; i < queue.length; i++) {
+    if (!running) break;
+    while (paused && running) { await sleep(300); }
+    if (!running) break;
+    await processBook(queue[i]);
+    if (autosave > 0 && results.length % autosave === 0) {
+      doExport(true);
+      el('save-lbl').textContent = 'Auto-opgeslagen: ' + results.length + ' boeken';
+    }
+    if (i < queue.length - 1) await sleep(delay);
+  }
+  running = false; paused = false;
+  el('btn-start').disabled = false;
+  el('btn-pause').disabled = true;
+  el('btn-stop').disabled = true;
+  el('btn-pause').textContent = '⏸ Pauzeer';
+  el('curbook').textContent = 'Klaar! ' + results.length + ' boeken verwerkt.';
+  el('prog-eta').textContent = '';
+  toast('Klaar! ' + results.length + ' boeken verwerkt', 'success');
+  if (results.length > 0) doExport(true);
+}
+
+function togglePause() {
+  paused = !paused;
+  el('btn-pause').textContent = paused ? '▶ Hervatten' : '⏸ Pauzeer';
+  toast(paused ? 'Gepauzeerd' : 'Hervat', 'info');
+}
+
+function stopProc() {
+  running = false; paused = false;
+  el('btn-start').disabled = false;
+  el('btn-pause').disabled = true;
+  el('btn-stop').disabled = true;
+  el('btn-pause').textContent = '⏸ Pauzeer';
+  el('curbook').textContent = 'Gestopt.';
+  toast('Verwerking gestopt', 'warn');
+}
+
+function doExport(auto) {
+  if (!results.length) { if (!auto) toast('Geen resultaten om te exporteren', 'warn'); return; }
+  var rows = [['#','Bestand','Titel','Auteur','ISBN','Jaar','Uitgever','Taal','Type','Conditie','Prijs info','Status','Fout']];
+  results.forEach(function(r, i){
+    rows.push([i+1, r.name, r.title||'', r.author||'', r.isbn||'', r.year||'', r.publisher||'', r.lang||'', r.type||'', r.condition||'', r.priceInfo||'', r.status, r.err||'']);
+  });
+  var wb = XLSX.utils.book_new();
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [4,22,32,22,16,8,22,8,15,12,14,8,30].map(function(w){ return {wch:w}; });
+  XLSX.utils.book_append_sheet(wb, ws, 'Boeken');
+  var fname = 'boeken_' + new Date().toISOString().slice(0,10) + '.xlsx';
+  XLSX.writeFile(wb, fname);
+  if (!auto) toast('Opgeslagen: ' + fname, 'success');
+  el('exp-info').textContent = 'Laatste export: ' + new Date().toLocaleTimeString('nl') + ' (' + results.length + ' boeken)';
+}
+
+function clearRes() {
+  results = [];
+  el('res-body').innerHTML = '';
+  el('res-n').textContent = '0';
+  el('exp-info').textContent = '';
+  toast('Resultaten gewist', 'info');
+}
+</script>
+</body>
+</html>
