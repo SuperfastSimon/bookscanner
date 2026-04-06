@@ -260,6 +260,27 @@ tr:hover td{background:var(--s2)}
 var gAccessToken = null;
 var gTokenClient = null;
 
+var LS_PREFIX = 'bsp_';
+function saveKey(name) {
+  var val = document.getElementById('k-' + name).value.trim();
+  if (val) localStorage.setItem(LS_PREFIX + name, val);
+  else localStorage.removeItem(LS_PREFIX + name);
+}
+function loadSavedKeys() {
+  ['openai','mistral','groq','google'].forEach(function(name) {
+    var val = localStorage.getItem(LS_PREFIX + name);
+    if (val) document.getElementById('k-' + name).value = val;
+  });
+  var filled = ['openai','mistral','groq','google'].filter(function(k){ return document.getElementById('k-'+k).value.trim(); });
+  if (filled.length) el('key-status').textContent = filled.length + '/4 keys ingevuld (hersteld)';
+}
+document.addEventListener('DOMContentLoaded', function() {
+  loadSavedKeys();
+  ['openai','mistral','groq','google'].forEach(function(name) {
+    document.getElementById('k-' + name).addEventListener('input', function(){ saveKey(name); });
+  });
+});
+
 function googleLogin() {
   if (typeof google === 'undefined' || !google.accounts) { setKS('google', 'Google GSI script nog niet geladen, probeer opnieuw', 'var(--red)'); return; }
   var clientId = document.getElementById('k-google').value.trim();
@@ -270,6 +291,7 @@ function googleLogin() {
     callback: function(resp) {
       if (resp.error) { setKS('google', 'Fout: ' + resp.error, 'var(--red)'); return; }
       gAccessToken = resp.access_token;
+      saveKey('google');
       setKS('google', 'Ingelogd - Drive toegang OK', 'var(--grn)');
       document.getElementById('btn-google-login').textContent = 'Opnieuw inloggen';
       var keys = ['openai','mistral','groq'].filter(function(k){ return K(k); });
