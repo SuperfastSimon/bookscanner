@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Book Scanner Pro</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f172a;--s1:#1e293b;--s2:#263348;--bd:#334155;--acc:#6366f1;--grn:#22c55e;--red:#ef4444;--yel:#f59e0b;--blu:#38bdf8;--txt:#e2e8f0;--mut:#94a3b8}
+body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+.topbar{background:linear-gradient(135deg,#1e1b4b,#1e293b);padding:14px 20px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center}
+.topbar h1{font-size:1.1rem;font-weight:700}
+.sub{font-size:.7rem;color:var(--mut);margin-top:2px}
+.tabs{display:flex;background:var(--s1);border-bottom:1px solid var(--bd)}
+.tab{flex:1;padding:11px 6px;text-align:center;font-size:.7rem;font-weight:700;color:var(--mut);cursor:pointer;border-bottom:2px solid transparent;transition:.15s;user-select:none}
+.tab .n{font-size:1.1rem;display:block;margin-bottom:1px}
+.tab.on{color:var(--acc);border-bottom-color:var(--acc);background:var(--s2)}
+.pg{display:none;padding:16px;max-width:900px;margin:0 auto}
+.pg.on{display:block}
+label{display:block;font-size:.72rem;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px}
+input[type=text],input[type=password]{width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:9px 12px;color:var(--txt);font-size:.84rem;outline:none;transition:.15s}
+input:focus{border-color:var(--acc)}
+select{width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:9px 12px;color:var(--txt);font-size:.84rem;outline:none}
+.row{display:flex;gap:8px;align-items:flex-end}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.btn{padding:9px 16px;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.82rem;transition:.15s;display:inline-flex;align-items:center;gap:5px}
+.btn:disabled{opacity:.3;cursor:not-allowed}
+.b-acc{background:var(--acc);color:#fff}
+.b-acc:hover:not(:disabled){background:#4f46e5}
+.b-grn{background:#15803d;color:#fff}
+.b-grn:hover:not(:disabled){filter:brightness(1.1)}
+.b-red{background:#dc2626;color:#fff}
+.b-red:hover:not(:disabled){filter:brightness(1.1)}
+.b-yel{background:#b45309;color:#fff}
+.b-yel:hover:not(:disabled){filter:brightness(1.1)}
+.b-out{background:transparent;border:1px solid var(--bd);color:var(--txt)}
+.b-out:hover:not(:disabled){background:var(--s2)}
+.b-sm{padding:5px 10px;font-size:.72rem}
+.b-full{width:100%;justify-content:center;padding:13px;font-size:.95rem;border-radius:10px;margin-top:10px}
+.card{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:14px}
+.ct{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin-bottom:12px}
+.ks{font-size:.73rem;margin-top:5px;min-height:16px}
+.info{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px 14px;font-size:.77rem;color:var(--mut);line-height:1.75;margin-top:10px}
+.info a{color:var(--acc)}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px}
+.stat{background:var(--s2);border-radius:8px;padding:10px;text-align:center}
+.sn{font-size:1.45rem;font-weight:800;line-height:1}
+.sl{font-size:.66rem;color:var(--mut);margin-top:3px}
+.pbar{height:12px;background:var(--bg);border-radius:99px;overflow:hidden;margin:6px 0}
+.pfill{height:100%;background:linear-gradient(90deg,var(--acc),var(--blu));transition:width .4s;border-radius:99px}
+.ctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--s2);padding:12px 14px;border-radius:10px;margin-bottom:14px}
+.ctrl .sp{flex:1}
+.curbook{font-size:.8rem;color:var(--blu);padding:7px 10px;background:var(--bg);border-radius:6px;margin-top:8px;min-height:28px}
+.logbox{max-height:130px;overflow-y:auto;background:var(--bg);border-radius:8px;padding:10px;font-size:.71rem;font-family:monospace;color:var(--mut);margin-top:8px;line-height:1.65}
+.lg{color:var(--grn)}.le{color:var(--red)}.li{color:var(--blu)}
+.tw{overflow-x:auto;max-height:420px;overflow-y:auto}
+table{width:100%;border-collapse:collapse;font-size:.74rem}
+th{background:var(--bg);padding:8px 10px;text-align:left;color:var(--mut);font-weight:700;position:sticky;top:0;z-index:2;white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--bd);vertical-align:top;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+tr:hover td{background:var(--s2)}
+.tag{font-size:.66rem;padding:1px 6px;border-radius:4px;font-weight:700}
+.tok{background:#14532d;color:var(--grn)}
+.ter{background:#450a0a;color:var(--red)}
+.tmo{background:#1e3a5f;color:#93c5fd}
+.tvi{background:#451a03;color:#fbbf24}
+.tan{background:#1c1917;color:#d97706}
+.exprow{display:flex;gap:10px;align-items:center;padding:12px 16px;background:var(--s2);flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:5px 10px;font-size:.75rem;margin:3px;cursor:pointer}
+.chip.sel{border-color:var(--acc);color:var(--acc)}
+#toast{position:fixed;bottom:18px;right:18px;padding:10px 18px;border-radius:10px;font-size:.83rem;font-weight:700;display:none;z-index:9999;color:#fff;max-width:280px;line-height:1.4}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1>&#128218; Book Scanner Pro</h1>
+    <div class="sub">Google Drive boekfoto's &#8594; metadata + prijzen &#8594; Excel</div>
+  </div>
+  <div id="key-status" style="font-size:.72rem;color:var(--mut)">geen keys ingevoerd</div>
+</div>
+
+<div class="tabs">
+  <div class="tab on" onclick="goTab(0)"><span class="n">1</span>API Keys</div>
+  <div class="tab" onclick="goTab(1)"><span class="n">2</span>Drive laden</div>
+  <div class="tab" onclick="goTab(2)"><span class="n">3</span>Verwerken</div>
+  <div class="tab" onclick="goTab(3)"><span class="n">4</span>Resultaten</div>
+</div>
+
+<!-- TAB 1: KEYS -->
+<div class="pg on" id="pg0">
+  <div class="card">
+    <div class="ct">OpenAI API Key (sk-...)  -  vereist voor vision en prijszoeken</div>
+    <div class="row">
+      <input type="password" id="k-openai" class="grow" placeholder="sk-proj-... of sk-...">
+      <button class="btn b-out b-sm" onclick="testKey('openai')">Test</button>
+    </div>
+    <div class="ks" id="ks-openai" style="color:var(--mut)">Nog niet getest</div>
+  </div>
+  <div class="card">
+    <div class="ct">Mistral API Key  -  aanbevolen voor betere analyse van oude boeken</div>
+    <div class="row">
+      <input type="password" id="k-mistral" class="grow" placeholder="Mistral key...">
+      <button class="btn b-out b-sm" onclick="testKey('mistral')">Test</button>
+    </div>
+    <div class="ks" id="ks-mistral" style="color:var(--mut)">Nog niet getest</div>
+  </div>
+  <div class="card">
+    <div class="ct">Groq API Key  -  aanbevolen voor snelle gratis tekstverwerking</div>
+    <div class="row">
+      <input type="password" id="k-groq" class="grow" placeholder="gsk_...">
+      <button class="btn b-out b-sm" onclick="testKey('groq')">Test</button>
+    </div>
+    <div class="ks" id="ks-groq" style="color:var(--mut)">Nog niet getest</div>
+  </div>
+  <div class="card">
+    <div class="ct">Google Drive toegang via OAuth  -  geen API key nodig</div>
+    <label>Google OAuth Client ID</label>
+    <div class="row" style="margin-bottom:8px">
+      <input type="text" id="k-google" class="grow" placeholder="....apps.googleusercontent.com">
+      <button class="btn b-out b-sm" id="btn-google-login" onclick="googleLogin()">Inloggen met Google</button>
+    </div>
+    <div class="ks" id="ks-google" style="color:var(--mut)">Nog niet ingelogd</div>
+    <div class="info">
+      <strong>Eenmalige setup (5 min):</strong><br>
+      1. Ga naar <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a> &#8594; Create OAuth 2.0 Client ID &#8594; type: <em>Web application</em><br>
+      2. Voeg toe onder "Authorized JavaScript origins":<br>
+      <code>https://superfastsimon.github.io</code><br>
+      3. Kopieer de Client ID en plak hierboven<br>
+      4. Open de app via: <a href="https://superfastsimon.github.io/bookscanner" target="_blank">superfastsimon.github.io/bookscanner</a>
+    </div>
+  </div>
+  <button class="btn b-acc b-full" onclick="goTab(1)">Volgende: Drive laden &#8594;</button>
+</div>
+
+<!-- TAB 2: DRIVE -->
+<div class="pg" id="pg1">
+  <div class="card">
+    <div class="ct">Google Drive map URL</div>
+    <label>Plak hier de link van je Drive map (aanpasbaar)</label>
+    <input type="text" id="drive-url" value="https://drive.google.com/drive/u/0/mobile/folders/1ddBC_xPzlV5cF9QCmgLDJmcUVFo7ukLW/1w5KTzCYhft12iDlcbNdY8GNwtEBsg_6k?sort=13&direction=a" style="margin-bottom:10px">
+    <div class="row">
+      <button class="btn b-acc" onclick="parseDriveUrl()">Analyseer URL</button>
+      <button class="btn b-grn" id="btn-load" onclick="loadDrive()" disabled>Foto's laden uit Drive</button>
+    </div>
+    <div id="detected-ids" style="margin-top:10px;font-size:.75rem;color:var(--mut)"></div>
+    <div id="drive-msg" style="font-size:.78rem;margin-top:8px;min-height:18px;color:var(--mut)"></div>
+  </div>
+
+  <div class="card" id="sub-card" style="display:none">
+    <div class="ct">Submappen gevonden - selecteer welke je wil scannen</div>
+    <div id="sub-list"></div>
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="btn b-out b-sm" onclick="selAll(true)">Alles selecteren</button>
+      <button class="btn b-out b-sm" onclick="selAll(false)">Deselecteren</button>
+      <button class="btn b-acc b-sm" onclick="loadSelected()">Geselecteerde laden</button>
+    </div>
+  </div>
+
+  <div class="card" id="q-card" style="display:none">
+    <div class="ct">Wachtrij klaar</div>
+    <div id="q-info" style="font-size:.88rem;line-height:1.8"></div>
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="btn b-acc" onclick="goTab(2)">Ga naar verwerken &#8594;</button>
+      <button class="btn b-out b-sm" onclick="clearQueue()">Wachtrij wissen</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ct">Of: handmatig foto's toevoegen</div>
+    <input type="file" id="file-inp" multiple accept="image/*" onchange="addFiles(this.files)">
+    <button class="btn b-out" onclick="document.getElementById('file-inp').click()">Bestanden selecteren</button>
+    <div id="file-msg" style="font-size:.78rem;margin-top:8px;color:var(--mut)"></div>
+  </div>
+</div>
+
+<!-- TAB 3: VERWERKEN -->
+<div class="pg" id="pg2">
+  <div class="card">
+    <div class="ct">Instellingen</div>
+    <div class="g3">
+      <div>
+        <label>Prijzen opzoeken</label>
+        <select id="opt-prices">
+          <option value="all">Elk boek</option>
+          <option value="isbn">Alleen met ISBN</option>
+          <option value="none">Niet opzoeken</option>
+        </select>
+      </div>
+      <div>
+        <label>Vertraging tussen boeken (ms)</label>
+        <input type="text" id="opt-delay" value="1500">
+      </div>
+      <div>
+        <label>Auto-save elke N boeken</label>
+        <input type="text" id="opt-autosave" value="25">
+      </div>
+    </div>
+  </div>
+
+  <div class="ctrl">
+    <button class="btn b-grn" id="btn-start" onclick="startProc()">&#9654; Start verwerking</button>
+    <button class="btn b-yel" id="btn-pause" onclick="togglePause()" disabled>&#9646;&#9646; Pauzeer</button>
+    <button class="btn b-red" id="btn-stop" onclick="stopProc()" disabled>&#9632; Stop</button>
+    <span class="sp"></span>
+    <span id="cost-lbl" style="font-size:.76rem;color:var(--mut)">Kosten: $0.000</span>
+    <span id="save-lbl" style="font-size:.76rem;color:var(--mut)"></span>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="sn" id="st-tot" style="color:var(--blu)">0</div><div class="sl">Totaal</div></div>
+    <div class="stat"><div class="sn" id="st-done" style="color:var(--grn)">0</div><div class="sl">Klaar</div></div>
+    <div class="stat"><div class="sn" id="st-err" style="color:var(--red)">0</div><div class="sl">Fouten</div></div>
+    <div class="stat"><div class="sn" id="st-isbn" style="color:var(--yel)">0</div><div class="sl">Met ISBN</div></div>
+    <div class="stat"><div class="sn" id="st-pct" style="color:var(--mut)">0%</div><div class="sl">Voortgang</div></div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;font-size:.74rem;color:var(--mut)">
+    <span id="prog-lbl">Wacht op start...</span>
+    <span id="prog-eta"></span>
+  </div>
+  <div class="pbar"><div class="pfill" id="pfill" style="width:0%"></div></div>
+  <div class="curbook" id="curbook">-</div>
+  <div class="logbox" id="logbox"></div>
+  <button class="btn b-acc b-full" onclick="goTab(3)" style="margin-top:12px">Bekijk resultaten &#8594;</button>
+</div>
+
+<!-- TAB 4: RESULTATEN -->
+<div class="pg" id="pg3">
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <span style="font-weight:700">Resultaten: <span id="res-n" style="color:var(--blu)">0</span> boeken</span>
+      <span id="res-sub" style="font-size:.74rem;color:var(--mut)">Excel downloadt naar je Downloads map</span>
+    </div>
+    <div class="tw">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Bestand</th><th>Titel</th><th>Auteur</th>
+            <th>ISBN</th><th>Jaar</th><th>Uitgever</th><th>Taal</th>
+            <th>Type</th><th>Conditie</th><th>Prijs info</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="res-body"></tbody>
+      </table>
+    </div>
+    <div class="exprow">
+      <button class="btn b-grn" onclick="doExport(false)">Download Excel (.xlsx)</button>
+      <button class="btn b-out b-sm" onclick="clearRes()">Wissen</button>
+      <span id="exp-info" style="font-size:.74rem;color:var(--mut);margin-left:auto"></span>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://accounts.google.com/gsi/client" async></script>
+<script>
+var gAccessToken = null;
+var gTokenClient = null;
+
+function googleLogin() {
+  var clientId = document.getElementById('k-google').value.trim();
+  if (!clientId) { setKS('google', 'Vul eerst een Client ID in', 'var(--red)'); return; }
+  gTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: 'https://www.googleapis.com/auth/drive.readonly',
+    callback: function(resp) {
+      if (resp.error) { setKS('google', 'Fout: ' + resp.error, 'var(--red)'); return; }
+      gAccessToken = resp.access_token;
+      setKS('google', 'Ingelogd - Drive toegang OK', 'var(--grn)');
+      document.getElementById('btn-google-login').textContent = 'Opnieuw inloggen';
+      var keys = ['openai','mistral','groq'].filter(function(k){ return K(k); });
+      document.getElementById('key-status').textContent = (keys.length + (gAccessToken ? 1 : 0)) + '/4 keys/login OK';
+    }
+  });
+  gTokenClient.requestAccessToken();
+}
+
+function driveAuthHeader() {
+  if (!gAccessToken) throw new Error('Niet ingelogd bij Google. Ga naar tab 1 en log in.');
+  return {'Authorization': 'Bearer ' + gAccessToken};
+}
+var queue = [];
+var results = [];
+var running = false;
+var paused = false;
+var totalCost = 0;
+var t0 = null;
+var isbnCount = 0;
+var selectedFolderIds = [];
+
+function K(id) { return document.getElementById('k-' + id).value.trim(); }
+function sleep(ms) { return new Promise(function(r){ setTimeout(r, ms); }); }
+function el(id) { return document.getElementById(id); }
+
+function goTab(n) {
+  document.querySelectorAll('.pg').forEach(function(p, i){ p.classList.toggle('on', i === n); });
+  document.querySelectorAll('.tab').forEach(function(t, i){ t.classList.toggle('on', i === n); });
+}
+
+function toast(msg, type) {
+  var t = el('toast');
+  var colors = {success:'#15803d', error:'#dc2626', warn:'#b45309', info:'#4338ca'};
+  t.textContent = msg;
+  t.style.background = colors[type] || colors.info;
+  t.style.display = 'block'; t.style.opacity = '1';
+  clearTimeout(t._t);
+  t._t = setTimeout(function(){ t.style.opacity='0'; setTimeout(function(){ t.style.display='none'; }, 300); }, 4000);
+}
+
+function logAdd(msg, cls) {
+  var box = el('logbox');
+  var d = document.createElement('div');
+  d.className = cls || '';
+  d.textContent = '[' + new Date().toLocaleTimeString('nl') + '] ' + msg;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setKS(name, msg, color) {
+  var e = el('ks-' + name);
+  e.textContent = msg;
+  e.style.color = color;
+}
+
+async function testKey(name) {
+  var key = K(name);
+  if (!key) { setKS(name, 'Geen key ingevoerd', 'var(--red)'); return; }
+  setKS(name, 'Testen...', 'var(--yel)');
+  try {
+    var r, ok;
+    if (name === 'openai') {
+      r = await fetch('https://api.openai.com/v1/models', { headers: { 'Authorization': 'Bearer ' + key } });
+      ok = r.ok;
+      setKS(name, ok ? 'Geldig - gpt-4o-mini beschikbaar' : 'Ongeldig (' + r.status + ')', ok ? 'var(--grn)' : 'var(--red)');
+    } else if (name === 'mistral') {
+      r = await fetch('https://api.mistral.ai/v1/models', { headers: { 'Authorization': 'Bearer ' + key } });
+      ok = r.ok;
+      setKS(name, ok ? 'Geldig - Pixtral beschikbaar' : 'Ongeldig (' + r.status + ')', ok ? 'var(--grn)' : 'var(--red)');
+    } else if (name === 'groq') {
+      r = await fetch('https://api.groq.com/openai/v1/models', { headers: { 'Authorization': 'Bearer ' + key } });
+      ok = r.ok;
+      setKS(name, ok ? 'Geldig - Llama beschikbaar' : 'Ongeldig (' + r.status + ')', ok ? 'var(--grn)' : 'var(--red)');
+    } else if (name === 'google') {
+      r = await fetch('https://www.googleapis.com/drive/v3/about?fields=user&key=' + key);
+      ok = r.ok;
+      setKS(name, ok ? 'Geldig - Drive API actief' : 'Ongeldig of Drive API niet geactiveerd (' + r.status + ')', ok ? 'var(--grn)' : 'var(--red)');
+    }
+    var keys = ['openai','mistral','groq','google'].filter(function(k){ return K(k); });
+    el('key-status').textContent = keys.length + '/4 keys ingevuld';
+  } catch(e) {
+    setKS(name, 'Fout: ' + e.message, 'var(--red)');
+  }
+}
+
+function extractDriveIds(url) {
+  var ids = [];
+  var re = /\/folders\/([a-zA-Z0-9_-]{10,})/g;
+  var m;
+  while ((m = re.exec(url)) !== null) { ids.push(m[1]); }
+  return ids.filter(function(v, i, a){ return a.indexOf(v) === i; });
+}
+
+function parseDriveUrl() {
+  var url = el('drive-url').value.trim();
+  var ids = extractDriveIds(url);
+  var container = el('detected-ids');
+  if (!ids.length) {
+    container.innerHTML = '<span style="color:var(--red)">Geen folder ID gevonden. Gebruik de normale Drive URL.</span>';
+    el('btn-load').disabled = true;
+    return;
+  }
+  selectedFolderIds = [ids[ids.length - 1]];
+  var html = '<div style="margin-bottom:6px">Gevonden folder IDs - klik om te selecteren:</div>';
+  ids.forEach(function(id, i) {
+    var sel = (i === ids.length - 1) ? ' sel' : '';
+    html += '<span class="chip' + sel + '" data-id="' + id + '" onclick="toggleChip(this)">';
+    html += (i === 0 ? 'Hoofdmap' : 'Submap') + ' ' + id.slice(0, 14) + '...';
+    html += '</span>';
+  });
+  container.innerHTML = html;
+  el('btn-load').disabled = !K('google');
+  el('drive-msg').textContent = K('google') ? ids.length + ' ID(s) herkend. Klik Fotos laden.' : 'Vul eerst een Google API key in (tab 1).';
+}
+
+function toggleChip(chip) {
+  var id = chip.dataset.id;
+  var idx = selectedFolderIds.indexOf(id);
+  if (idx >= 0) { selectedFolderIds.splice(idx, 1); chip.classList.remove('sel'); }
+  else { selectedFolderIds.push(id); chip.classList.add('sel'); }
+}
+
+async function driveList(folderId, mimeFilter) {
+  var files = []; var pt = '';
+  var headers = driveAuthHeader();
+  do {
+    var url = 'https://www.googleapis.com/drive/v3/files'
+      + '?q=' + encodeURIComponent("'" + fo
