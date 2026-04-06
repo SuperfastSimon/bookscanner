@@ -255,12 +255,13 @@ tr:hover td{background:var(--s2)}
 
 <div id="toast"></div>
 
-<script src="https://accounts.google.com/gsi/client" async></script>
+<script src="https://accounts.google.com/gsi/client"></script>
 <script>
 var gAccessToken = null;
 var gTokenClient = null;
 
 function googleLogin() {
+  if (typeof google === 'undefined' || !google.accounts) { setKS('google', 'Google GSI script nog niet geladen, probeer opnieuw', 'var(--red)'); return; }
   var clientId = document.getElementById('k-google').value.trim();
   if (!clientId) { setKS('google', 'Vul eerst een Client ID in', 'var(--red)'); return; }
   gTokenClient = google.accounts.oauth2.initTokenClient({
