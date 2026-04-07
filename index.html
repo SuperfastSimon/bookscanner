@@ -438,14 +438,17 @@ async function driveList(folderId, mimeFilter) {
 
 var _collectCount = 0;
 
-async function collectImagesRecursive(folderId) {
+async function collectImagesRecursive(folderId, folderName) {
   var items = await driveList(folderId, null);
-  var images = items.filter(function(f){ return f.mimeType && f.mimeType.startsWith('image/'); });
-  var subs   = items.filter(function(f){ return f.mimeType === 'application/vnd.google-apps.folder'; });
+  var images = items.filter(function(f){
+    return (f.mimeType && f.mimeType.startsWith('image/')) || IMAGE_EXTS.test(f.name || '');
+  });
+  var subs = items.filter(function(f){ return f.mimeType === 'application/vnd.google-apps.folder'; });
   images.forEach(function(f){ queue.push({name: f.name, type:'drive', id: f.id}); _collectCount++; });
-  if (_collectCount > 0) el('drive-msg').textContent = 'Laden... ' + _collectCount + ' foto\'s gevonden';
+  logAdd((folderName || folderId.slice(0,8)) + ': ' + images.length + ' foto\'s, ' + subs.length + ' submappen', 'li');
+  el('drive-msg').textContent = 'Laden... ' + _collectCount + ' foto\'s gevonden';
   for (var i = 0; i < subs.length; i++) {
-    await collectImagesRecursive(subs[i].id);
+    await collectImagesRecursive(subs[i].id, subs[i].name);
   }
 }
 
