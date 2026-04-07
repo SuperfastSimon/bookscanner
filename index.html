@@ -170,7 +170,7 @@ tr:hover td{background:var(--s2)}
 
   <div class="card">
     <div class="ct">Of: handmatig foto's toevoegen</div>
-    <input type="file" id="file-inp" multiple accept="image/*" onchange="addFiles(this.files)">
+    <input type="file" id="file-inp" multiple onchange="addFiles(this.files)">
     <button class="btn b-out" onclick="document.getElementById('file-inp').click()">Bestanden selecteren</button>
     <div id="file-msg" style="font-size:.78rem;margin-top:8px;color:var(--mut)"></div>
   </div>
@@ -495,12 +495,15 @@ async function loadSelected() {
   }
 }
 
+var IMAGE_EXTS = /\.(jpe?g|png|gif|webp|bmp|heic|heif|tiff?|avif)$/i;
 function addFiles(files) {
-  var added = 0;
+  var added = 0, skipped = 0;
   Array.from(files).forEach(function(f){
-    if (f.type.startsWith('image/')) { queue.push({name: f.name, type:'local', file: f}); added++; }
+    if (f.type.startsWith('image/') || IMAGE_EXTS.test(f.name)) {
+      queue.push({name: f.name, type:'local', file: f}); added++;
+    } else { skipped++; }
   });
-  el('file-msg').textContent = added + ' bestand(en) toegevoegd. Totaal in wachtrij: ' + queue.length;
+  el('file-msg').textContent = added + ' afbeelding(en) toegevoegd' + (skipped ? ', ' + skipped + ' overgeslagen (geen afbeelding)' : '') + '. Totaal in wachtrij: ' + queue.length;
   showQueue();
 }
 
