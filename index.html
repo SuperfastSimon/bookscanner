@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com; connect-src https://api.openai.com https://api.mistral.ai https://api.groq.com https://www.googleapis.com https://accounts.google.com https://openlibrary.org; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com https://cdn.jsdelivr.net; connect-src https://api.openai.com https://api.mistral.ai https://api.groq.com https://www.googleapis.com https://accounts.google.com https://openlibrary.org; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-ancestors 'none'">
 <title>Book Scanner Pro</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" integrity="sha384-OLBgp1GsljhM2TJ+sbHjaiH9txEUvgdDTAzHv2P24donTt6/529l+9Ua0vFImLlb" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#0f172a;--s1:#1e293b;--s2:#263348;--bd:#334155;--acc:#6366f1;--grn:#22c55e;--red:#ef4444;--yel:#f59e0b;--blu:#38bdf8;--txt:#e2e8f0;--mut:#94a3b8}
@@ -519,25 +520,54 @@ function showQueue() {
   el('st-tot').textContent = queue.length;
 }
 
-async function getImageBase64(item) {
-  if (item.type === 'local') {
-    return new Promise(function(resolve, reject) {
-      var r = new FileReader();
-      r.onload = function(e){ resolve(e.target.result.split(',')[1]); };
-      r.onerror = reject;
-      r.readAsDataURL(item.file);
+var HEIC_TYPES = /^image\/(heic|heif)$/i;
+var HEIC_EXT   = /\.(heic|heif)$/i;
+
+function isHeic(blob, name) {
+  return HEIC_TYPES.test(blob.type) || HEIC_EXT.test(name || '');
+}
+
+async function blobToJpegBase64(blob, name) {
+  // 1. Canvas path — native on Safari/iOS, works for all standard formats everywhere
+  var objectUrl = URL.createObjectURL(blob);
+  try {
+    var b64 = await new Promise(function(resolve, reject) {
+      var img = new Image();
+      img.onload = function() {
+        var canvas = document.createElement('canvas');
+        canvas.width  = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg', 0.88).split(',')[1]);
+      };
+      img.onerror = reject;
+      img.src = objectUrl;
     });
+    return b64;
+  } catch(_) {
+    // 2. heic2any fallback — for HEIC on Chrome/Firefox desktop
+    if (isHeic(blob, name) && typeof heic2any !== 'undefined') {
+      var converted = await heic2any({blob: blob, toType: 'image/jpeg', quality: 0.88});
+      var jpegBlob = Array.isArray(converted) ? converted[0] : converted;
+      return await blobToJpegBase64(jpegBlob, 'converted.jpg');
+    }
+    throw new Error('Kan afbeelding niet laden: ' + name + '. HEIC wordt niet ondersteund in deze browser — gebruik Safari of Firefox.');
+  } finally {
+    URL.revokeObjectURL(objectUrl);
   }
-  var url = 'https://www.googleapis.com/drive/v3/files/' + item.id + '?alt=media';
-  var resp = await fetch(url, {headers: driveAuthHeader()});
-  if (!resp.ok) throw new Error('Drive download fout: ' + resp.status);
-  var blob = await resp.blob();
-  return new Promise(function(resolve, reject) {
-    var r = new FileReader();
-    r.onload = function(e){ resolve(e.target.result.split(',')[1]); };
-    r.onerror = reject;
-    r.readAsDataURL(blob);
-  });
+}
+
+async function getImageBase64(item) {
+  var blob;
+  if (item.type === 'local') {
+    blob = item.file;
+  } else {
+    var url = 'https://www.googleapis.com/drive/v3/files/' + item.id + '?alt=media';
+    var resp = await fetch(url, {headers: driveAuthHeader()});
+    if (!resp.ok) throw new Error('Drive download fout: ' + resp.status);
+    blob = await resp.blob();
+  }
+  return blobToJpegBase64(blob, item.name);
 }
 
 var VISION_PROMPT = 'Analyseer deze boekcover. Geef ALLEEN JSON terug (geen uitleg), exact dit formaat:\n{"title":"","author":"","isbn":"","year":"","publisher":"","lang":"nl/en/de/fr/other","type":"roman/non-fictie/kinderboek/studieboek/other","condition":"goed/redelijk/slecht","confidence":0.9}\n- isbn: alleen als duidelijk zichtbaar op cover/rug, anders leeg string\n- year: alleen als zichtbaar, anders leeg string\n- confidence: 0.0-1.0';
