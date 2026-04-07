@@ -436,41 +436,36 @@ async function driveList(folderId, mimeFilter) {
   return files;
 }
 
-async function loadImagesFromFolders(folderIds) {
-  var all = [];
-  for (var i = 0; i < folderIds.length; i++) {
-    el('drive-msg').textContent = 'Map ' + (i+1) + '/' + folderIds.length + ' laden...';
-    var imgs = await driveList(folderIds[i], null);
-    imgs = imgs.filter(function(f){ return f.mimeType && f.mimeType.startsWith('image/'); });
-    all = all.concat(imgs);
+var _collectCount = 0;
+
+async function collectImagesRecursive(folderId) {
+  var items = await driveList(folderId, null);
+  var images = items.filter(function(f){ return f.mimeType && f.mimeType.startsWith('image/'); });
+  var subs   = items.filter(function(f){ return f.mimeType === 'application/vnd.google-apps.folder'; });
+  images.forEach(function(f){ queue.push({name: f.name, type:'drive', id: f.id}); _collectCount++; });
+  if (_collectCount > 0) el('drive-msg').textContent = 'Laden... ' + _collectCount + ' foto\'s gevonden';
+  for (var i = 0; i < subs.length; i++) {
+    await collectImagesRecursive(subs[i].id);
   }
-  all.forEach(function(f){ queue.push({name: f.name, type:'drive', id: f.id}); });
+}
+
+async function loadImagesFromFolders(folderIds) {
+  _collectCount = 0;
+  for (var i = 0; i < folderIds.length; i++) {
+    await collectImagesRecursive(folderIds[i]);
+  }
   showQueue();
-  el('drive-msg').textContent = all.length + ' foto\'s toegevoegd aan wachtrij.';
+  el('drive-msg').textContent = _collectCount + ' foto\'s toegevoegd aan wachtrij (alle submappen doorzocht).';
 }
 
 async function loadDrive() {
   if (!gAccessToken) { toast('Log eerst in met Google (tab 1)', 'error'); return; }
   if (!selectedFolderIds.length) { toast('Selecteer eerst een folder ID', 'warn'); return; }
   el('btn-load').disabled = true;
-  el('drive-msg').textContent = 'Submappen zoeken...';
+  el('sub-card').style.display = 'none';
+  el('drive-msg').textContent = 'Mappen doorzoeken...';
   try {
-    var subs = [];
-    for (var i = 0; i < selectedFolderIds.length; i++) {
-      var found = await driveList(selectedFolderIds[i], 'application/vnd.google-apps.folder');
-      subs = subs.concat(found);
-    }
-    if (subs.length) {
-      el('sub-card').style.display = '';
-      var html = '';
-      subs.forEach(function(s){
-        html += '<div class="chip sel" data-id="'+s.id+'" onclick="this.classList.toggle(\'sel\')">'+s.name+'</div>';
-      });
-      el('sub-list').innerHTML = html;
-      el('drive-msg').textContent = subs.length + ' submappen gevonden.';
-    } else {
-      await loadImagesFromFolders(selectedFolderIds);
-    }
+    await loadImagesFromFolders(selectedFolderIds);
   } catch(e) {
     toast('Drive fout: ' + e.message, 'error');
     el('drive-msg').textContent = 'Fout: ' + e.message;
