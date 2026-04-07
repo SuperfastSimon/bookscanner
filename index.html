@@ -544,14 +544,40 @@ async function blobToJpegBase64(blob, name) {
       img.src = objectUrl;
     });
     return b64;
-  } catch(_) {
-    // 2. heic2any fallback — for HEIC on Chrome/Firefox desktop
-    if (isHeic(blob, name) && typeof heic2any !== 'undefined') {
-      var converted = await heic2any({blob: blob, toType: 'image/jpeg', quality: 0.88});
-      var jpegBlob = Array.isArray(converted) ? converted[0] : converted;
-      return await blobToJpegBase64(jpegBlob, 'converted.jpg');
+  } catch(canvasErr) {
+    // 2. heic2any fallback — for HEIC on Chrome/Firefox (no native HEIC support)
+    if (isHeic(blob, name)) {
+      if (typeof heic2any === 'undefined') {
+        throw new Error('HEIC bestand maar heic2any library niet geladen. Herlaad de pagina.');
+      }
+      logAdd('HEIC → JPEG omzetten (' + name + ')...', 'li');
+      try {
+        var t0heic = Date.now();
+        var converted = await heic2any({blob: blob, toType: 'image/jpeg', quality: 0.85});
+        var jpegBlob = Array.isArray(converted) ? converted[0] : converted;
+        logAdd('HEIC omgezet in ' + ((Date.now()-t0heic)/1000).toFixed(1) + 's', 'lg');
+        // Canvas now works because jpegBlob is a normal JPEG
+        var objectUrl2 = URL.createObjectURL(jpegBlob);
+        try {
+          return await new Promise(function(resolve, reject) {
+            var img2 = new Image();
+            img2.onload = function() {
+              var c = document.createElement('canvas');
+              c.width = img2.naturalWidth; c.height = img2.naturalHeight;
+              c.getContext('2d').drawImage(img2, 0, 0);
+              resolve(c.toDataURL('image/jpeg', 0.88).split(',')[1]);
+            };
+            img2.onerror = reject;
+            img2.src = objectUrl2;
+          });
+        } finally {
+          URL.revokeObjectURL(objectUrl2);
+        }
+      } catch(heicErr) {
+        throw new Error('HEIC conversie mislukt: ' + (heicErr.message || heicErr));
+      }
     }
-    throw new Error('Kan afbeelding niet laden: ' + name + '. HEIC wordt niet ondersteund in deze browser — gebruik Safari of Firefox.');
+    throw new Error('Kan afbeelding niet laden: ' + name + ' (' + (canvasErr && canvasErr.message || 'onbekende fout') + ')');
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
