@@ -542,13 +542,28 @@ async function getImageBase64(item) {
 
 var VISION_PROMPT = 'Analyseer deze boekcover. Geef ALLEEN JSON terug (geen uitleg), exact dit formaat:\n{"title":"","author":"","isbn":"","year":"","publisher":"","lang":"nl/en/de/fr/other","type":"roman/non-fictie/kinderboek/studieboek/other","condition":"goed/redelijk/slecht","confidence":0.9}\n- isbn: alleen als duidelijk zichtbaar op cover/rug, anders leeg string\n- year: alleen als zichtbaar, anders leeg string\n- confidence: 0.0-1.0';
 
+async function fetchWithRetry(url, opts, label, maxRetries) {
+  maxRetries = maxRetries || 4;
+  var wait = 2000;
+  for (var attempt = 0; attempt <= maxRetries; attempt++) {
+    var resp = await fetch(url, opts);
+    if (resp.status !== 429) return resp;
+    var retryAfter = parseInt(resp.headers.get('Retry-After') || resp.headers.get('x-ratelimit-reset-requests') || '0');
+    var delay = retryAfter > 0 ? retryAfter * 1000 : wait;
+    logAdd(label + ' rate limit — wacht ' + Math.round(delay/1000) + 's (poging ' + (attempt+1) + '/' + maxRetries + ')', 'li');
+    await sleep(delay);
+    wait = Math.min(wait * 2, 30000);
+  }
+  return resp; // return last response (will be handled as error by caller)
+}
+
 async function analyzeBookImage(base64) {
   var openaiKey = K('openai');
   var mistralKey = K('mistral');
   if (!openaiKey && !mistralKey) throw new Error('Geen OpenAI of Mistral key ingevoerd');
 
   if (openaiKey) {
-    var resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    var resp = await fetchWithRetry('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {'Authorization':'Bearer '+openaiKey, 'Content-Type':'application/json'},
       body: JSON.stringify({
@@ -558,7 +573,7 @@ async function analyzeBookImage(base64) {
           {type:'image_url', image_url:{url:'data:image/jpeg;base64,'+base64, detail:'low'}}
         ]}]
       })
-    });
+    }, 'OpenAI');
     if (!resp.ok) { var e1 = await resp.json(); throw new Error('OpenAI: ' + (e1.error && e1.error.message || resp.status)); }
     var d1 = await resp.json();
     totalCost += ((d1.usage.prompt_tokens||0) * 0.00000015 + (d1.usage.completion_tokens||0) * 0.0000006);
@@ -568,7 +583,7 @@ async function analyzeBookImage(base64) {
     return JSON.parse(m1[0]);
   }
 
-  var resp2 = await fetch('https://api.mistral.ai/v1/chat/completions', {
+  var resp2 = await fetchWithRetry('https://api.mistral.ai/v1/chat/completions', {
     method: 'POST',
     headers: {'Authorization':'Bearer '+mistralKey, 'Content-Type':'application/json'},
     body: JSON.stringify({
@@ -578,8 +593,8 @@ async function analyzeBookImage(base64) {
         {type:'image_url', image_url:'data:image/jpeg;base64,'+base64}
       ]}]
     })
-  });
-  if (!resp2.ok) { var e2 = await resp2.json(); throw new Error('Mistral: ' + (e2.message || resp2.status)); }
+  }, 'Mistral');
+  if (!resp2.ok) { var e2 = await resp2.json(); throw new Error('Mistral ' + resp2.status + ': ' + (e2.message || JSON.stringify(e2))); }
   var d2 = await resp2.json();
   var m2 = d2.choices[0].message.content.trim().match(/\{[\s\S]*\}/);
   if (!m2) throw new Error('Geen JSON in Mistral antwoord');
